@@ -1,0 +1,6 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|AnyCPU'">
+    <StartArguments>"E:\Games\WoW735\World of Warcraft\World\maps\Northrend\Northrend_24_24_tex0.adt"</StartArguments>
+  </PropertyGroup>
+</Project>
