@@ -1,5 +1,5 @@
 # 7x_TexAdt_MTXP_Adder
-Updated version of Varen's [7x_TexAdt_MTXP_Adder](https://github.com/Varen/7x_TexAdt_MTXP_Adder) that in addition to texture scaling and height data also adds the height texture FileDataID block added in patch 8.1.0 to ADTs.
+Updated version of Varen's [7x_TexAdt_MTXP_Adder](https://github.com/Varen/7x_TexAdt_MTXP_Adder) that in addition to texture scaling and height data also adds the height texture FileDataID block required in patch 8.1.0+ to ADTs.
 
 Notable difference from the original is that ground effects remain unchanged/unedited and as such this only changes tex0 ADTs.
 
