@@ -191,7 +191,9 @@ namespace _7x_TexAdt_MTXP_Adder
                 if (listfileEntry.Length != 2)
                     continue;
 
-                if (listfileEntry[1].ToLowerInvariant().Contains("tileset"))
+                listfileEntry[1] = listfileEntry[1].ToLowerInvariant();
+
+                if (listfileEntry[1].StartsWith("tileset"))
                 {
                     Listfile[uint.Parse(listfileEntry[0])] = listfileEntry[1];
                     ListfileReverse[listfileEntry[1]] = uint.Parse(listfileEntry[0]);
@@ -389,8 +391,6 @@ namespace _7x_TexAdt_MTXP_Adder
                         bwOut.Write(txInfo.HeightScale);
                         bwOut.Write(txInfo.HeightOffset);
                         bwOut.Write((uint)0); // Padding?
-
-                        Console.WriteLine(bwOut.BaseStream.Position);
                     }
                 }
                 else
