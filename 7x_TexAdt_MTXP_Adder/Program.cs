@@ -1,13 +1,10 @@
 ﻿using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
-using Newtonsoft.Json.Linq;
 
 namespace _7x_TexAdt_MTXP_Adder
 {
@@ -20,6 +17,9 @@ namespace _7x_TexAdt_MTXP_Adder
         static char[] chMcly = new[] { 'Y', 'L', 'C', 'M' };
         static char[] chMcal = new[] { 'L', 'A', 'C', 'M' };
         static char[] chMtxp = new[] { 'P', 'X', 'T', 'M' };
+        static char[] chMDID = new[] { 'D', 'I', 'D', 'M' };
+        static char[] chMHID = new[] { 'D', 'I', 'H', 'M' };
+
         /*
         * Tex0 Data Add:
         * MCAL needs to be Uncompressed into 4096. 
@@ -68,27 +68,42 @@ namespace _7x_TexAdt_MTXP_Adder
 
         private static Dictionary<string, TextureInfo> TextureInfo_Global;
         private static Dictionary<string, Dictionary<string, TextureInfo>> TextureInfo_ByADT;
+        private static Dictionary<uint, string> Listfile = new Dictionary<uint, string>();
+        private static Dictionary<string, uint> ListfileReverse = new Dictionary<string, uint>();
 
         public static uint GroundEffectCutoffValue = 80;
 
         static void GetTextureInfo(string adtName, string texture, out TextureInfo texInfo)
         {
+            if (texture.EndsWith("_s.blp"))
+                texture = texture.Replace("_s.blp", ".blp");
+            
             if (TextureInfo_ByADT.ContainsKey(adtName))
             {
-                if (TextureInfo_ByADT[adtName].ContainsKey(texture))
-                {
-                    texInfo = TextureInfo_ByADT[adtName][texture];
+                if (TextureInfo_ByADT[adtName].TryGetValue(texture, out texInfo))
                     return;
-                }
             }
 
-            if (TextureInfo_Global.ContainsKey(texture))
-            {
-                texInfo = TextureInfo_Global[texture];
+            if (TextureInfo_Global.TryGetValue(texture, out texInfo))
                 return;
-            }
+
+            Console.WriteLine("Could not find height texture metadata for texture: " + texture + ", using default values.");
 
             texInfo = new TextureInfo(1, 0, 1, 0);
+        }
+
+        static void GetHeightTextureFDIDForTexture(string diffuseName, out uint heightFDID)
+        {
+            if (diffuseName.EndsWith("_s.blp"))
+                diffuseName = diffuseName.Replace("_s.blp", ".blp");
+
+            var heightName = diffuseName.Replace(".blp", "_h.blp");
+
+            if (!ListfileReverse.TryGetValue(heightName, out heightFDID))
+            {
+                Console.WriteLine("Could not find height texture for texture: " + diffuseName + ", returning 0.");
+                heightFDID = 0;
+            }
         }
 
         static byte[] ExtendMcalValue(byte source)
@@ -148,9 +163,9 @@ namespace _7x_TexAdt_MTXP_Adder
 
         }
 
-
         static void Main(string[] args)
         {
+            // Load height texture config
             try
             {
                 LoadConfig();
@@ -164,6 +179,26 @@ namespace _7x_TexAdt_MTXP_Adder
                 Console.ReadLine();
                 Environment.Exit(1);
             }
+
+            // Load Listfile
+            Console.WriteLine("Loading listfile");
+            if (!File.Exists("listfile.csv"))
+                throw new FileNotFoundException("listfile.csv not found, please place it in the same directory as the program.");
+
+            foreach (var line in File.ReadAllLines("listfile.csv"))
+            {
+                var listfileEntry = line.Split(';');
+                if (listfileEntry.Length != 2)
+                    continue;
+
+                if (listfileEntry[1].ToLowerInvariant().Contains("tileset"))
+                {
+                    Listfile[uint.Parse(listfileEntry[0])] = listfileEntry[1];
+                    ListfileReverse[listfileEntry[1]] = uint.Parse(listfileEntry[0]);
+                }
+            }
+
+            Console.WriteLine("Listfile loaded, found " + Listfile.Count + " tileset entries.");
 
             Directory.CreateDirectory("Output");
             var inputList = Directory.EnumerateFiles("Input", "*_tex0.adt");
@@ -187,13 +222,12 @@ namespace _7x_TexAdt_MTXP_Adder
             }
 
             Console.Write("All done!");
-            Console.Beep();
             Console.ReadLine();
         }
 
         private static void ProcessFile(object file)
         {
-            string inFile = (string) file;
+            string inFile = (string)file;
 
             using (BinaryReader brTex = new BinaryReader(File.OpenRead(inFile)))
             using (BinaryWriter bwOut = new BinaryWriter(File.OpenWrite("Output\\" + Path.GetFileName(inFile))))
@@ -201,6 +235,7 @@ namespace _7x_TexAdt_MTXP_Adder
                 string curAdtName = Path.GetFileName(inFile).Replace("_tex0.adt", "").ToLowerInvariant();
 
                 List<string> textureList = new List<string>();
+                List<uint> textureListFDID = new List<uint>();
 
                 List<byte[]> mcnkGroundEffectMaps = new List<byte[]>();
                 int mcnkCount = 0;
@@ -212,9 +247,9 @@ namespace _7x_TexAdt_MTXP_Adder
 
                     long nextPos = brTex.BaseStream.Position + size;
 
-                    if (header.SequenceEqual(chMtex))
+                    if (header.SequenceEqual(chMtex)) // MTEX (Legacy)
                     {
-                        //Console.WriteLine("Mtex..");
+                        Console.WriteLine("Warning: Legacy MTEX chunk found, please convert to MDID and rerun the tool, continuing with only writing MHID regardless.");
                         bwOut.Write(header);
                         bwOut.Write(size);
 
@@ -223,15 +258,48 @@ namespace _7x_TexAdt_MTXP_Adder
                             char[] txts = brTex.ReadChars(Convert.ToInt32(size));
 
                             string[] textures = new string(txts).Split('\0');
-                            
+
                             // 1 less because of empty string at the end
-                            for(int i = 0; i < textures.Length - 1; i++)
+                            for (int i = 0; i < textures.Length - 1; i++)
                                 textureList.Add(textures[i]);
 
                             bwOut.Write(txts);
                         }
                     }
-                    else if (header.SequenceEqual(chMcnk))
+                    else if (header.SequenceEqual(chMDID)) // MDID
+                    {
+                        bwOut.Write(header);
+                        bwOut.Write(size);
+
+                        if (size > 0)
+                        {
+                            var prevPos = brTex.BaseStream.Position;
+
+                            var textureCount = size / 4;
+                            for (int i = 0; i < textureCount; i++)
+                                textureListFDID.Add(brTex.ReadUInt32());
+
+                            brTex.BaseStream.Position = prevPos;
+                            var txts = brTex.ReadBytes(Convert.ToInt32(size));
+                            bwOut.Write(txts);
+                        }
+                    }
+                    else if (header.SequenceEqual(chMHID)) // MHID 
+                    {
+                        bwOut.Write(header);
+                        bwOut.Write(size);
+
+                        if (size > 0)
+                        {
+                            brTex.BaseStream.Position += size;
+                            for (int i = 0; i < textureListFDID.Count; i++)
+                            {
+                                GetHeightTextureFDIDForTexture(Listfile[textureListFDID[i]], out uint heightFDID);
+                                bwOut.Write(heightFDID);
+                            }
+                        }
+                    }
+                    else if (header.SequenceEqual(chMcnk)) // MCNK
                     {
                         //Console.WriteLine("Mcnk..");
                         bwOut.Write(header);
@@ -261,11 +329,8 @@ namespace _7x_TexAdt_MTXP_Adder
                                     uint mclyPos = brTex.ReadUInt32();
                                     bwOut.Write(mclyPos); //* 2);
 
-                                    brTex.ReadUInt32(); // Skip and replace groundeffect
-                                    GetTextureInfo(curAdtName, textureList[Convert.ToInt32(textureId)],
-                                        out TextureInfo tInfo);
-
-                                    bwOut.Write(tInfo.GroundEffect);
+                                    var groundEffect = brTex.ReadUInt32(); // Skip and replace groundeffect
+                                    bwOut.Write(groundEffect);
                                 }
                             }
                             else if (subHeader.SequenceEqual(chMcal))
@@ -276,67 +341,8 @@ namespace _7x_TexAdt_MTXP_Adder
                                 byte[] layerData = brTex.ReadBytes(Convert.ToInt32(subSize));
 
                                 bwOut.Write(layerData);
-
-                                byte[] doodadsMapData = new byte[16];
-
-                                uint mcalsToRead = subSize / 4096;
-
-                                int[] highestDoodadMcal = new int[64];
-                                uint[] highestDoodadMcalAmt =  new uint[64];
-
-                                for(int mcalId = 0; mcalId < mcalsToRead; mcalId++)
-                                { 
-                                    // Foreach 8x8 piece of Data in the 4096 this layer composes
-                                    for (int r = 0; r < 8; r++)
-                                    {
-                                        for (int i = 0; i < 8; i++)
-                                        {
-                                            // Check if the average is >= The cutoff value for spawning groundeffects
-
-                                            // We're in : Console.WriteLine("Doodadset: {0},{1}", r, i);
-                                            uint layerValue = 0;
-                                            for (int j = 0; j < 8; j++)
-                                            {
-                                                for (int colId = 0; colId < 8; colId++)
-                                                {
-                                                    int layerDataId = (mcalId * 4096) + (r * 512) + (j * 64) + (i * 8) + colId;
-                                                    layerValue += layerData[layerDataId];
-                                                }
-                                            }
-
-                                            layerValue = layerValue / 64;
-
-                                            // If so, set the bit in the map above corresponding to the layer we're at
-                                            if (layerValue >= GroundEffectCutoffValue && layerValue >= highestDoodadMcalAmt[r*8 + i])
-                                            {
-
-                                                highestDoodadMcal[r * 8 + i] = mcalId + 1;
-                                                highestDoodadMcalAmt[r * 8 + i] = layerValue;
-                                            }
-                                            
-                                        }
-                                        
-                                    }
-
-
-                                }
-
-                                for (int i = 0; i < 8; i++)
-                                {
-                                    for (int j = 0; j < 8; j++)
-                                    {
-                                        byte bit = Convert.ToByte(highestDoodadMcal[i * 8 + j] << ((j % 4) * 2));
-                                        doodadsMapData[j / 4 + (i * 2)] |= bit;
-                                    }
-                                }
-
-                                /*for (int i = 0; i < 16; i++)
-                                {
-                                    doodadsMapData[i] = (byte) (((doodadsMapData[i] * 0x80200802) & 0x0884422110) * 0x0101010101 >> 32);
-                                }*/
-                                mcnkGroundEffectMaps.Add(doodadsMapData);
                             }
-                            else // Trash chunk we don't use
+                            else
                             {
                                 if (subSize > 0)
                                     brTex.ReadBytes(Convert.ToInt32(subSize));
@@ -352,6 +358,7 @@ namespace _7x_TexAdt_MTXP_Adder
                     }
                     else
                     {
+                        Console.WriteLine("Writing existing " + new string(header) + " chunk..");
                         bwOut.Write(header);
                         bwOut.Write(size);
                         if (brTex.BaseStream.Position < nextPos)
@@ -363,75 +370,48 @@ namespace _7x_TexAdt_MTXP_Adder
 
                 brTex.Close();
 
-
                 //Console.WriteLine("Writing MTXP...");
                 // New MTXP is written
                 bwOut.Write(chMtxp);
 
                 // Will write when done 
                 long mtxpLenPos = bwOut.BaseStream.Position;
-                bwOut.Write((uint) 64);
+                bwOut.Write((uint)64);
 
-                for (int i = 0; i < textureList.Count; i++)
+                if(textureListFDID.Count > 0)
                 {
-                    GetTextureInfo(curAdtName, textureList[i], out TextureInfo txInfo);
+                    // Prefer FDID method
+                    for (int i = 0; i < textureListFDID.Count; i++)
+                    {
+                        GetTextureInfo(curAdtName, Listfile[textureListFDID[i]], out TextureInfo txInfo);
 
-                    bwOut.Write(txInfo.GetFlags());
-                    bwOut.Write(txInfo.HeightScale);
-                    bwOut.Write(txInfo.HeightOffset);
-                    bwOut.Write((uint) 0); // Padding?
+                        bwOut.Write(txInfo.GetFlags());
+                        bwOut.Write(txInfo.HeightScale);
+                        bwOut.Write(txInfo.HeightOffset);
+                        bwOut.Write((uint)0); // Padding?
+
+                        Console.WriteLine(bwOut.BaseStream.Position);
+                    }
                 }
+                else
+                {
+                    // Otherwise fallback to filenames
+                    for (int i = 0; i < textureList.Count; i++)
+                    {
+                        GetTextureInfo(curAdtName, textureList[i], out TextureInfo txInfo);
 
+                        bwOut.Write(txInfo.GetFlags());
+                        bwOut.Write(txInfo.HeightScale);
+                        bwOut.Write(txInfo.HeightOffset);
+                        bwOut.Write((uint)0); // Padding?
+                    }
+                }
+                
                 long endPos = bwOut.BaseStream.Position;
                 bwOut.BaseStream.Position = mtxpLenPos;
                 bwOut.Write(Convert.ToUInt32(endPos - mtxpLenPos) - 4);
-
-                
                 bwOut.Close();
 
-                string mainAdtName = curAdtName + ".adt";
-                try
-                {
-                    BinaryReader br = new BinaryReader(File.OpenRead("Input\\" + mainAdtName));
-                    // We now have the full groundeffects map, let's edit the main ADT accordingly.
-                    BinaryWriter bw = new BinaryWriter(File.OpenWrite("Output\\" + mainAdtName));
-
-                    // Header
-                    bw.Write(br.ReadBytes(12));
-
-                    int curMcnk = 0;
-                    while(br.BaseStream.Position < br.BaseStream.Length)
-                    {
-                        char[] headerChars = br.ReadChars(4);
-                        uint size = br.ReadUInt32();
-
-                        bw.Write(headerChars);
-                        bw.Write(size);
-                        
-                        if (headerChars.SequenceEqual(chMcnk))
-                        {
-                            // Other stuff
-                            bw.Write(br.ReadBytes(64));
-
-                            br.BaseStream.Position += 16;
-                            bw.Write(mcnkGroundEffectMaps[curMcnk]);
-                            bw.Write(br.ReadBytes(Convert.ToInt32(size - 80)));
-                            curMcnk++;
-                        }
-                        else
-                        {
-                            bw.Write(br.ReadBytes(Convert.ToInt32(size)));
-                        }
-                    }
-                }
-                catch (Exception e)
-                {
-                    Console.ForegroundColor = ConsoleColor.Red;
-
-                    Console.WriteLine("Error opening {0} : \r\n {1}", mainAdtName, e.Message);
-
-                    Console.ReadLine();
-                }
                 Console.WriteLine(curAdtName + " Done!");
             }
         }
