@@ -296,7 +296,17 @@ namespace _7x_TexAdt_MTXP_Adder
                             brTex.BaseStream.Position += size;
                             for (int i = 0; i < textureListFDID.Count; i++)
                             {
-                                GetHeightTextureFDIDForTexture(Listfile[textureListFDID[i]], out uint heightFDID);
+                                uint heightFDID = 0;
+
+                                if(Listfile.TryGetValue(textureListFDID[i], out var textureFilename))
+                                {
+                                    GetHeightTextureFDIDForTexture(textureFilename, out heightFDID);
+                                }
+                                else
+                                {
+                                    Console.WriteLine("Could not find height texture for texture FDID: " + textureListFDID[i] + ", using 0.");
+                                }
+
                                 bwOut.Write(heightFDID);
                             }
                         }
@@ -385,7 +395,16 @@ namespace _7x_TexAdt_MTXP_Adder
                     // Prefer FDID method
                     for (int i = 0; i < textureListFDID.Count; i++)
                     {
-                        GetTextureInfo(curAdtName, Listfile[textureListFDID[i]], out TextureInfo txInfo);
+                        TextureInfo txInfo = new TextureInfo(1, 0, 1, 0);
+
+                        if (Listfile.TryGetValue(textureListFDID[i], out var textureFilename))
+                        {
+                            GetTextureInfo(curAdtName, textureFilename, out txInfo);
+                        }
+                        else
+                        {
+                            Console.WriteLine("Could not find height texture for texture FDID: " + textureListFDID[i] + ", using 0.");
+                        }
 
                         bwOut.Write(txInfo.GetFlags());
                         bwOut.Write(txInfo.HeightScale);
