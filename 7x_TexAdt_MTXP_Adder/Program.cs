@@ -191,7 +191,9 @@ namespace _7x_TexAdt_MTXP_Adder
                 if (listfileEntry.Length != 2)
                     continue;
 
-                if (listfileEntry[1].ToLowerInvariant().Contains("tileset"))
+                listfileEntry[1] = listfileEntry[1].ToLowerInvariant();
+
+                if (listfileEntry[1].StartsWith("tileset"))
                 {
                     Listfile[uint.Parse(listfileEntry[0])] = listfileEntry[1];
                     ListfileReverse[listfileEntry[1]] = uint.Parse(listfileEntry[0]);
@@ -221,7 +223,7 @@ namespace _7x_TexAdt_MTXP_Adder
                 countdownEvent.Wait();
             }
 
-            Console.Write("All done!");
+            Console.WriteLine("All done!");
             Console.ReadLine();
         }
 
@@ -294,7 +296,17 @@ namespace _7x_TexAdt_MTXP_Adder
                             brTex.BaseStream.Position += size;
                             for (int i = 0; i < textureListFDID.Count; i++)
                             {
-                                GetHeightTextureFDIDForTexture(Listfile[textureListFDID[i]], out uint heightFDID);
+                                uint heightFDID = 0;
+
+                                if(Listfile.TryGetValue(textureListFDID[i], out var textureFilename))
+                                {
+                                    GetHeightTextureFDIDForTexture(textureFilename, out heightFDID);
+                                }
+                                else
+                                {
+                                    Console.WriteLine("Could not find height texture for texture FDID: " + textureListFDID[i] + ", using 0.");
+                                }
+
                                 bwOut.Write(heightFDID);
                             }
                         }
@@ -383,14 +395,21 @@ namespace _7x_TexAdt_MTXP_Adder
                     // Prefer FDID method
                     for (int i = 0; i < textureListFDID.Count; i++)
                     {
-                        GetTextureInfo(curAdtName, Listfile[textureListFDID[i]], out TextureInfo txInfo);
+                        TextureInfo txInfo = new TextureInfo(1, 0, 1, 0);
+
+                        if (Listfile.TryGetValue(textureListFDID[i], out var textureFilename))
+                        {
+                            GetTextureInfo(curAdtName, textureFilename, out txInfo);
+                        }
+                        else
+                        {
+                            Console.WriteLine("Could not find height texture for texture FDID: " + textureListFDID[i] + ", using 0.");
+                        }
 
                         bwOut.Write(txInfo.GetFlags());
                         bwOut.Write(txInfo.HeightScale);
                         bwOut.Write(txInfo.HeightOffset);
                         bwOut.Write((uint)0); // Padding?
-
-                        Console.WriteLine(bwOut.BaseStream.Position);
                     }
                 }
                 else
