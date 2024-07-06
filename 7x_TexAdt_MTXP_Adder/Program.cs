@@ -223,7 +223,7 @@ namespace _7x_TexAdt_MTXP_Adder
                 countdownEvent.Wait();
             }
 
-            Console.Write("All done!");
+            Console.WriteLine("All done!");
             Console.ReadLine();
         }
 
