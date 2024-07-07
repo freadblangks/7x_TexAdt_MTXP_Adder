@@ -182,10 +182,23 @@ namespace _7x_TexAdt_MTXP_Adder
 
             // Load Listfile
             Console.WriteLine("Loading listfile");
-            if (!File.Exists("listfile.csv"))
-                throw new FileNotFoundException("listfile.csv not found, please place it in the same directory as the program.");
 
-            foreach (var line in File.ReadAllLines("listfile.csv"))
+            var listfile = "";
+            if(!File.Exists("listfile.csv") && !File.Exists("community-listfile.csv"))
+            {
+                Console.WriteLine("listfile.csv or community-listfile.csv not found, please place one of them in the same directory as the program.");
+                Console.ReadLine();
+                Environment.Exit(1);
+            }
+            else
+            {
+                if(File.Exists("listfile.csv"))
+                    listfile = "listfile.csv";
+                else
+                    listfile = "community-listfile.csv";
+            }
+
+            foreach (var line in File.ReadAllLines(listfile))
             {
                 var listfileEntry = line.Split(';');
                 if (listfileEntry.Length != 2)

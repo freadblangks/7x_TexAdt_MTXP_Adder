@@ -5,7 +5,7 @@ Notable difference from the original is that ground effects remain unchanged/une
 
 ## Usage
 - Download the latest release from the [releases](https://github.com/Marlamin/7x_TexAdt_MTXP_Adder/releases) page and extract it somewhere.
-- Download the latest community listfile from the [listfile releases](https://github.com/wowdev/wow-listfile/releases), rename it to `listfile.csv` and put it in the extracted folder.
+- Download the latest `community-listfile.csv` from the [listfile releases](https://github.com/wowdev/wow-listfile/releases), rename it to `listfile.csv` and put it in the extracted folder.
 - Download the latest `TextureInfoByFilePath.json` from [Luzifix's ADTHeightDump repo](https://github.com/Luzifix/ADTHeightDump/tree/main/Output), rename it to `global.cfg` and put it in a new folder inside the extracted folder called `config`.
 - Put ADTs that have already been partially upconverted (have an MDID chunk) in a new `Input` folder.
 - Run the tool and it should output ADTs with the added MTXP/MHID chunks to the `Output` folder.
